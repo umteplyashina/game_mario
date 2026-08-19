@@ -79,13 +79,24 @@
     break: () => { tone(140, 0.12, "sawtooth", 0.07, 50); tone(90, 0.16, "triangle", 0.05); },
   };
 
+  const isTouchDevice =
+    (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) ||
+    navigator.maxTouchPoints > 0;
+  const CONFIRM = isTouchDevice ? "Тап по экрану" : "Enter";
+
+  function pressKey(k) {
+    if (!k) return;
+    if (!keys[k]) justPressed[k] = true;
+    keys[k] = true;
+  }
+
   window.addEventListener("keydown", (e) => {
     const mapKey = remap(e.code);
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(e.code) || e.code === "KeyW") {
       e.preventDefault();
     }
-    if (!keys[mapKey]) justPressed[mapKey] = true;
-    keys[mapKey] = true;
+    if (e.code === "KeyM" && !e.repeat) setMuted(!muted);
+    pressKey(mapKey);
     ensureAudio();
   });
 
@@ -101,28 +112,185 @@
     return code;
   }
 
-  const touch = document.getElementById("touch");
-  touch.addEventListener("pointerdown", (e) => {
-    const btn = e.target.closest("button");
-    if (!btn) return;
-    e.preventDefault();
-    const k = btn.dataset.key;
-    keys[k] = true;
-    justPressed[k] = true;
-    btn.setPointerCapture(e.pointerId);
+  const pad = document.getElementById("touch");
+  const padPointers = new Map();
+  let touchHeld = new Set();
+
+  function padButtonAt(x, y) {
+    const el = document.elementFromPoint(x, y);
+    if (!el || !el.closest) return null;
+    const btn = el.closest("button[data-key]");
+    return btn && pad.contains(btn) ? btn : null;
+  }
+
+  function syncPad() {
+    const held = new Set();
+    for (const btn of padPointers.values()) {
+      if (btn && btn.dataset.key) held.add(btn.dataset.key);
+    }
+    for (const k of touchHeld) {
+      if (!held.has(k)) keys[k] = false;
+    }
+    for (const k of held) pressKey(k);
+    touchHeld = held;
+
+    const active = new Set(padPointers.values());
+    for (const btn of pad.querySelectorAll("button")) {
+      btn.classList.toggle("pressed", active.has(btn));
+    }
+  }
+
+  function padDown(id, x, y) {
+    const btn = padButtonAt(x, y);
+    if (!btn) return false;
+    padPointers.set(id, btn);
+    syncPad();
     ensureAudio();
-  });
-  touch.addEventListener("pointerup", (e) => {
-    const btn = e.target.closest("button");
-    if (!btn) return;
-    keys[btn.dataset.key] = false;
-  });
-  touch.addEventListener("pointercancel", (e) => {
-    const btn = e.target.closest("button");
-    if (btn) keys[btn.dataset.key] = false;
+    return true;
+  }
+
+  // Палец может съехать с кнопки — тогда трекаем его дальше и переключаем
+  // клавишу, вместо того чтобы оставить её зажатой навсегда.
+  function padMove(id, x, y) {
+    if (!padPointers.has(id)) return;
+    const btn = padButtonAt(x, y);
+    if (padPointers.get(id) === btn) return;
+    padPointers.set(id, btn);
+    syncPad();
+  }
+
+  function padUp(id) {
+    if (!padPointers.has(id)) return;
+    padPointers.delete(id);
+    syncPad();
+  }
+
+  if (window.PointerEvent) {
+    pad.addEventListener("pointerdown", (e) => {
+      if (padDown(e.pointerId, e.clientX, e.clientY)) e.preventDefault();
+    });
+    window.addEventListener("pointermove", (e) => {
+      if (padPointers.has(e.pointerId)) {
+        e.preventDefault();
+        padMove(e.pointerId, e.clientX, e.clientY);
+      }
+    }, { passive: false });
+    window.addEventListener("pointerup", (e) => padUp(e.pointerId));
+    window.addEventListener("pointercancel", (e) => padUp(e.pointerId));
+  } else {
+    pad.addEventListener("touchstart", (e) => {
+      let hit = false;
+      for (const t of e.changedTouches) {
+        if (padDown(t.identifier, t.clientX, t.clientY)) hit = true;
+      }
+      if (hit) e.preventDefault();
+    }, { passive: false });
+    window.addEventListener("touchmove", (e) => {
+      for (const t of e.changedTouches) padMove(t.identifier, t.clientX, t.clientY);
+    }, { passive: false });
+    const endTouch = (e) => {
+      for (const t of e.changedTouches) padUp(t.identifier);
+    };
+    window.addEventListener("touchend", endTouch);
+    window.addEventListener("touchcancel", endTouch);
+  }
+
+  pad.addEventListener("contextmenu", (e) => e.preventDefault());
+
+  function releaseAll() {
+    for (const k of Object.keys(keys)) keys[k] = false;
+    padPointers.clear();
+    touchHeld = new Set();
+    for (const btn of pad.querySelectorAll("button")) btn.classList.remove("pressed");
+  }
+
+  window.addEventListener("blur", releaseAll);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) return;
+    releaseAll();
+    if (game.state === STATE.PLAY) game.state = STATE.PAUSE;
   });
 
-  canvas.addEventListener("click", () => ensureAudio());
+  // Тап по игровому полю заменяет Enter на устройствах без клавиатуры.
+  canvas.addEventListener("pointerdown", (e) => {
+    ensureAudio();
+    if (game.state === STATE.PLAY) return;
+    e.preventDefault();
+    justPressed.Enter = true;
+  });
+
+  const soundBtn = document.getElementById("btnSound");
+  const fullBtn = document.getElementById("btnFull");
+  const pauseBtn = document.getElementById("btnPause");
+
+  function setMuted(v) {
+    muted = v;
+    soundBtn.textContent = muted ? "ЗВУК: ВЫКЛ" : "ЗВУК: ВКЛ";
+    soundBtn.setAttribute("aria-pressed", String(muted));
+  }
+
+  function requestFullscreen() {
+    const el = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (req) req.call(el);
+  }
+
+  function exitFullscreen() {
+    const exit = document.exitFullscreen || document.webkitExitFullscreen;
+    if (exit) exit.call(document);
+  }
+
+  function fullscreenActive() {
+    return Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+  }
+
+  // Кнопки-чипы не должны забирать фокус: иначе пробел начнёт нажимать их,
+  // а не прыгать.
+  function onChip(btn, handler) {
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      btn.blur();
+      handler();
+    });
+  }
+
+  onChip(pauseBtn, () => {
+    ensureAudio();
+    justPressed.KeyP = true;
+  });
+
+  onChip(soundBtn, () => {
+    ensureAudio();
+    setMuted(!muted);
+  });
+
+  onChip(fullBtn, () => {
+    if (fullscreenActive()) exitFullscreen();
+    else requestFullscreen();
+  });
+
+  if (!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen)) {
+    fullBtn.hidden = true;
+  }
+
+  const stageArea = document.querySelector(".stage-area");
+  const STAGE_BORDER = 12;
+
+  function layout() {
+    const aw = stageArea.clientWidth - STAGE_BORDER;
+    const ah = stageArea.clientHeight - STAGE_BORDER;
+    if (aw <= 0 || ah <= 0) return;
+    const width = Math.max(160, Math.floor(Math.min(aw, (ah * W) / H)));
+    canvas.style.width = width + "px";
+    canvas.style.height = Math.floor((width * H) / W) + "px";
+  }
+
+  window.addEventListener("resize", layout);
+  window.addEventListener("orientationchange", () => setTimeout(layout, 150));
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", layout);
+  if (window.ResizeObserver) new ResizeObserver(layout).observe(stageArea);
+  if (document.fonts) document.fonts.ready.then(layout).catch(() => {});
+  layout();
 
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
   function aabb(a, b) {
@@ -1460,7 +1628,7 @@
     ctx.font = "10px 'Press Start 2P', sans-serif";
     ctx.fillText("Бей блоки головой — собирай монеты и грибы", W / 2, 160);
     ctx.fillStyle = Math.sin(game.titleBob * 0.15) > 0 ? "#fff" : "#ffd447";
-    ctx.fillText("НАЖМИ ENTER ИЛИ ПРОБЕЛ", W / 2, 430);
+    ctx.fillText(isTouchDevice ? "НАЖМИ «ПРЫЖОК» ИЛИ ЭКРАН" : "НАЖМИ ENTER ИЛИ ПРОБЕЛ", W / 2, 430);
     ctx.fillStyle = "#1d3557";
     ctx.font = "8px 'Press Start 2P', sans-serif";
     ctx.fillText("Прыгай сверху на злодеев   •   Колючих обходи", W / 2, 460);
@@ -1509,15 +1677,15 @@
       drawPlay();
     } else if (game.state === STATE.PAUSE) {
       drawPlay();
-      drawOverlay("ПАУЗА", "Enter — продолжить");
+      drawOverlay("ПАУЗА", CONFIRM + " — продолжить");
       if (justPressed.Enter || justPressed.Escape || justPressed.KeyP) game.state = STATE.PLAY;
     } else if (game.state === STATE.WIN) {
       drawPlay();
-      drawOverlay("УРОВЕНЬ ПРОЙДЕН!", "Счёт " + game.score + "   Enter — ещё раз");
+      drawOverlay("УРОВЕНЬ ПРОЙДЕН!", "Счёт " + game.score + "   " + CONFIRM + " — ещё раз");
       if (justPressed.Enter || justPressed.ArrowUp) startGame();
     } else if (game.state === STATE.OVER) {
       drawSky();
-      drawOverlay("ИГРА ОКОНЧЕНА", "Enter — начать заново");
+      drawOverlay("ИГРА ОКОНЧЕНА", CONFIRM + " — начать заново");
       if (justPressed.Enter || justPressed.ArrowUp) startGame();
     }
 
