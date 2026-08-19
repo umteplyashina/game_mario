@@ -1,0 +1,107 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  background:
+    radial-gradient(ellipse at top, #1a3a7a 0%, #0b1020 55%, #07080f 100%);
+  color: #f4f1de;
+  font-family: "Press Start 2P", system-ui, sans-serif;
+}
+
+body {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.wrap {
+  width: min(100vw - 24px, 1000px);
+  text-align: center;
+}
+
+h1 {
+  font-size: clamp(14px, 2.4vw, 22px);
+  letter-spacing: 2px;
+  margin-bottom: 14px;
+  color: #ffd447;
+  text-shadow: 3px 3px 0 #c1121f, 0 0 18px rgba(255, 212, 71, 0.35);
+}
+
+.stage {
+  position: relative;
+  display: inline-block;
+  border: 6px solid #2b2118;
+  border-radius: 10px;
+  box-shadow:
+    0 0 0 4px #ffd447,
+    0 18px 40px rgba(0, 0, 0, 0.45);
+  background: #000;
+  max-width: 100%;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+  background: #5c94fc;
+}
+
+.hint {
+  margin-top: 14px;
+  font-size: 8px;
+  line-height: 1.8;
+  color: #c9d4ea;
+  opacity: 0.9;
+}
+
+.touch {
+  display: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 8px;
+  padding: 0 10px;
+  justify-content: space-between;
+  align-items: flex-end;
+  pointer-events: none;
+}
+
+.touch-left,
+.touch .jump {
+  pointer-events: auto;
+}
+
+.touch-left {
+  display: flex;
+  gap: 8px;
+}
+
+.touch button {
+  font-family: inherit;
+  font-size: 14px;
+  min-width: 56px;
+  height: 52px;
+  border: 3px solid #1d3557;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.78);
+  color: #1d3557;
+  box-shadow: 0 4px 0 #1d3557;
+}
+
+.touch .jump {
+  min-width: 110px;
+  background: rgba(255, 212, 71, 0.9);
+}
+
+@media (pointer: coarse), (max-width: 800px) {
+  .touch { display: flex; }
+  .hint { display: none; }
+  h1 { font-size: 13px; }
+}
