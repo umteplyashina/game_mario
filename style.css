@@ -53,17 +53,23 @@ h1 {
   text-shadow: 3px 3px 0 #c1121f, 0 0 18px rgba(255, 212, 71, 0.35);
 }
 
+/* Кнопки живут в отдельных ячейках сетки, поэтому физически не могут
+   наехать на игровое поле: сетка сначала отдаёт место кнопкам, а канвас
+   подстраивается под остаток. */
 .shell {
-  position: relative;
   flex: 1 1 auto;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  grid-template-areas:
+    "game game"
+    "move act";
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
 }
 
 .stage-area {
-  flex: 1 1 auto;
+  grid-area: game;
+  min-width: 0;
   min-height: 0;
   display: flex;
   align-items: center;
@@ -99,18 +105,25 @@ canvas {
   opacity: 0.9;
 }
 
+/* Обёртка не создаёт бокс, чтобы группы кнопок попали прямо в сетку .shell. */
 .pad {
-  display: none;
-  flex: 0 0 auto;
-  gap: 10px;
-  align-items: flex-end;
-  justify-content: space-between;
+  display: contents;
 }
 
 .pad-group {
-  display: flex;
+  display: none;
   gap: 10px;
   align-items: flex-end;
+}
+
+.pad-move {
+  grid-area: move;
+  justify-self: start;
+}
+
+.pad-act {
+  grid-area: act;
+  justify-self: end;
 }
 
 .btn {
@@ -187,24 +200,46 @@ canvas {
 }
 
 @media (pointer: coarse), (max-width: 860px) {
-  .pad { display: flex; }
+  .pad-group { display: flex; }
+  .shell { row-gap: 10px; }
   .hint { display: none; }
 }
 
-/* Телефон в горизонтальной ориентации: экран низкий, поэтому пад ложится
-   поверх нижних углов игры, где его удобно держать большими пальцами. */
+/* Телефон в горизонтальной ориентации: вертикали мало, поэтому кнопки
+   уезжают в боковые колонки под большие пальцы, а игра остаётся посередине
+   целиком открытой. */
 @media (orientation: landscape) and (max-height: 560px) {
   h1 { display: none; }
 
-  .pad {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 4px;
-    z-index: 5;
-    pointer-events: none;
+  .shell {
+    grid-template-areas: "move game act";
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-rows: minmax(0, 1fr);
+    row-gap: 0;
+    column-gap: 8px;
   }
 
-  .pad-group { pointer-events: auto; }
-  .btn { opacity: 0.85; }
+  .pad-move,
+  .pad-act {
+    align-self: end;
+    padding-bottom: 2px;
+  }
+
+  .btn-dir {
+    width: clamp(54px, 9vw, 78px);
+    height: clamp(50px, 24vh, 78px);
+    font-size: clamp(14px, 3vh, 24px);
+  }
+
+  .btn-jump {
+    min-width: clamp(80px, 13vw, 132px);
+    height: clamp(50px, 24vh, 78px);
+    font-size: clamp(8px, 1.9vh, 13px);
+  }
+
+  .chip {
+    min-height: 28px;
+    padding: 6px 9px;
+    font-size: clamp(6px, 1.5vh, 8px);
+  }
 }
